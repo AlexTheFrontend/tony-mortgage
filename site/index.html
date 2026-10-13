@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tony's View Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Tony's View tracker</h1>
+    <p class="sub">Tony Alexander's weekly borrower advice and economic tone, with the OCR, swap rates and mortgage rates. <span id="range"></span></p>
+  </header>
+  <section id="summary" class="tiles" aria-label="Latest values"></section>
+  <div id="advice-legend" class="legend" aria-label="Advice colours"></div>
+  <main>
+    <div id="chart" role="img" aria-label="Stacked charts: rates, borrower advice, economic tone and advice score over time"></div>
+    <aside id="details" hidden>
+      <button id="close" type="button" aria-label="Close details">×</button>
+      <h2 id="d-headline"></h2>
+      <p class="meta"><span id="d-date"></span> · <a id="d-pdf" target="_blank" rel="noopener">Open the PDF</a></p>
+      <h3>If I were a borrower</h3>
+      <p id="d-advice"></p>
+      <blockquote id="d-advice-quote"></blockquote>
+      <h3>Economy tone</h3>
+      <p id="d-tone"></p>
+      <blockquote id="d-tone-quote"></blockquote>
+    </aside>
+  </main>
+  <details id="table-view">
+    <summary>All issues as a table</summary>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Headline</th><th>If I were a borrower</th><th>Tone</th><th>Tony's lowest 1y / 2y / 3y</th></tr>
+        </thead>
+        <tbody id="issues-table"></tbody>
+      </table>
+    </div>
+  </details>
+  <footer>
+    <label>Loan for the advice score: $<input id="loan" type="number" min="10000" step="10000" value="500000"></label>
+    <p class="note">Mortgage rates are Reserve Bank monthly averages of advertised (carded) rates, not special rates. The advice score assumes an interest-only loan with no break fees. Tone scores and advice groups were read from each issue by an AI; click a week to see the source. Sources: tonyalexander.nz, Reserve Bank of New Zealand (B2, B20).</p>
+  </footer>
+  <script src="vendor/echarts.min.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

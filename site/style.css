@@ -1,0 +1,49 @@
+/* Colours: the dataviz skill's reference palette, checked with its validator
+   (light and dark). m1/m2/m3 = 1y/2y/3y terms; tony/fix1/float = advice score lines. */
+:root {
+  color-scheme: light dark;
+  --bg: #fcfcfb; --fg: #0b0b0b; --muted: #52514e; --axis: #898781; --grid: #e1e0d9; --panel: #f3f2ee;
+  --ocr: #0b0b0b; --m1: #2a78d6; --m2: #eb6834; --m3: #1baf7a;
+  --pos: #2a78d6; --neg: #e34948; --tony: #e87ba4; --fix1: #2a78d6; --float: #eda100;
+  --g-float: #eda100; --g-6m: #86b6ef; --g-1y: #5598e7; --g-18m: #2a78d6; --g-2y: #1c5cab;
+  --g-3y_plus: #0d366b; --g-mix: #e87ba4; --g-none: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a19; --fg: #ffffff; --muted: #c3c2b7; --axis: #898781; --grid: #2c2c2a; --panel: #242422;
+    --ocr: #ffffff; --m1: #3987e5; --m2: #d95926; --m3: #199e70;
+    --pos: #3987e5; --neg: #e66767; --tony: #d55181; --fix1: #3987e5; --float: #c98500;
+    --g-float: #c98500; --g-6m: #184f95; --g-1y: #256abf; --g-18m: #3987e5; --g-2y: #6da7ec;
+    --g-3y_plus: #b7d3f6; --g-mix: #d55181; --g-none: #383835;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header h1 { margin: 0 0 4px; font-size: 22px; }
+.sub, .note, .meta { color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
+.tile { background: var(--panel); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; }
+.tile .label, .tile .note { font-size: 12px; color: var(--muted); }
+.tile .value { font-size: 20px; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#chart { width: 100%; height: 880px; }
+#details { position: fixed; top: 16px; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px));
+  overflow: auto; background: var(--panel); border: 1px solid var(--grid); border-radius: 10px;
+  padding: 16px 18px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.2); }
+#details h2 { font-size: 18px; margin: 0 28px 4px 0; }
+#details h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 4px; }
+#details blockquote { margin: 6px 0 0; padding-left: 10px; border-left: 3px solid var(--grid); font-style: italic; }
+#close { position: absolute; top: 8px; right: 10px; border: 0; background: none; color: var(--fg); font-size: 22px; cursor: pointer; }
+#table-view { margin-top: 12px; }
+#table-view summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.table-wrap { max-height: 480px; overflow: auto; margin-top: 8px; border: 1px solid var(--grid); border-radius: 8px; }
+#table-view table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#table-view th, #table-view td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--grid); vertical-align: top; }
+#table-view th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
+#table-view td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+footer { margin-top: 12px; font-size: 13px; }
+footer input { width: 120px; font: inherit; }
+a { color: var(--m1); }
+.hint { color: var(--muted); font-size: 11px; }

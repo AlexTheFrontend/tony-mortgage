@@ -1,0 +1,16 @@
+[project]
+name = "tonys-view-tracker"
+version = "0.1.0"
+description = "Charts of Tony Alexander's weekly borrower advice with the OCR and mortgage rates"
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1",
+    "pypdf>=5.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
