@@ -7,6 +7,7 @@
   --pos: #2a78d6; --neg: #e34948; --tony: #e87ba4; --fix1: #2a78d6; --float: #eda100;
   --g-float: #eda100; --g-6m: #86b6ef; --g-1y: #5598e7; --g-18m: #2a78d6; --g-2y: #1c5cab;
   --g-3y_plus: #0d366b; --g-mix: #e87ba4; --g-none: #c3c2b7;
+  --good: #0ca30c; /* status green: fixed, the same in dark mode */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -39,10 +40,16 @@ header h1 { margin: 0 0 4px; font-size: 22px; }
 #table-view { margin-top: 12px; }
 #table-view summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .table-wrap { max-height: 480px; overflow: auto; margin-top: 8px; border: 1px solid var(--grid); border-radius: 8px; }
-#table-view table { width: 100%; border-collapse: collapse; font-size: 13px; }
-#table-view th, #table-view td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--grid); vertical-align: top; }
-#table-view th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
-#table-view td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-wrap th, .table-wrap td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--grid); vertical-align: top; }
+.table-wrap th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
+.table-wrap td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+#by-start { margin-top: 20px; }
+#by-start h2 { font-size: 16px; margin: 0 0 4px; }
+#by-start .note { font-size: 13px; margin: 0; }
+.muted { color: var(--muted); }
+.tick { color: var(--good); font-weight: 700; margin-left: 6px; }
+#by-start-key .tick { margin: 0 4px 0 0; }
 footer { margin-top: 12px; font-size: 13px; }
 footer input { width: 120px; font: inherit; }
 a { color: var(--m1); }

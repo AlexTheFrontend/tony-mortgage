@@ -15,6 +15,9 @@
     "2y": "2 years", "3y_plus": "3+ years", mix: "Mix", none: "No advice",
   };
   const TERM_LABEL = { 0: "float", 6: "6m", 12: "1y", 18: "18m", 24: "2y", 36: "3y", 48: "4y", 60: "5y" };
+  // The ways of borrowing in the table of totals by start month (keys of D.by_start[].totals).
+  const WAY_LABEL = { tony: "Tony's advice", float: "Always float", "6m": "Fix 6 months", "1y": "Fix 1 year",
+    "18m": "Fix 18 months", "2y": "Fix 2 years", "3y": "Fix 3 years" };
   // Tony's lowest lender rates are drawn for these terms, in the colour of the matching mortgage line.
   const TABLE_TERMS = { 12: "m1", 24: "m2", 36: "m3" };
   // Pixel layout of the stacked charts. The chart box is 880px high (style.css).
@@ -186,7 +189,9 @@
       xAxis: GRID.map((_, i) => timeAxis(i)),
       yAxis: [
         valueAxis(0, { min: 0 }),
-        { type: "category", gridIndex: 1, data: ["Advice"], show: false },
+        // A number axis, not a category axis: ECharts uses a category axis for the tooltip,
+        // and the tooltip must use the time axis. One unit is the full strip height.
+        { type: "value", gridIndex: 1, min: -0.5, max: 0.5, show: false },
         valueAxis(2, { min: -2, max: 2, interval: 1 }),
         valueAxis(3, { min: 0, axisLabel: { color: C.muted, formatter: (v) => "$" + Math.round(v / 1000) + "k" } }),
       ],
@@ -219,7 +224,8 @@
         // The legend icon is in ink; each diamond takes the colour of its term.
         { name: "Tony's lowest lender rates", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
           symbol: "diamond", symbolSize: 9, itemStyle: { color: C.fg }, data: tableRates },
-        { name: "Advice", type: "custom", xAxisIndex: 1, yAxisIndex: 1, renderItem: renderAdvice,
+        // tooltip off: the strip must not pull the hover line to the nearest block edge.
+        { name: "Advice", type: "custom", xAxisIndex: 1, yAxisIndex: 1, renderItem: renderAdvice, tooltip: { show: false },
           encode: { x: [0, 1], y: 2 }, data: adviceRuns.map((c) => c.value) },
         { name: "Tone", type: "bar", xAxisIndex: 2, yAxisIndex: 2, barMaxWidth: 6,
           data: issues.map((r) => ({ value: [r.date, r.tone.score],
@@ -309,6 +315,49 @@
     document.getElementById("issues-table").replaceChildren(...rows);
   }
 
+  // Totals from each start month to the last B20 month: the cheapest way, then 1 year, Tony and float.
+  function renderByStart(loan) {
+    const k = loan / D.score.loan; // the score is linear in the loan
+    document.getElementById("by-start-note").textContent =
+      `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, ` +
+      `on a ${money(loan)} interest-only loan. "Best" is the cheapest of 7 ways: always float, ` +
+      "always fix for 6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice.";
+    const rows = D.by_start.map((r) => {
+      const totals = Object.fromEntries(Object.entries(r.totals).map(([key, v]) => [key, Math.round(v * k)]));
+      const best = Math.min(...Object.values(totals));
+      const tr = document.createElement("tr");
+      const cell = (text, cls) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (cls) td.className = cls;
+        tr.append(td);
+        return td;
+      };
+      cell(r.start, "num");
+      const names = Object.keys(WAY_LABEL).filter((key) => totals[key] === best).map((key) => WAY_LABEL[key]);
+      cell(`${names.join(", ")}: ${money(best)}`);
+      for (const key of ["1y", "tony", "float"]) {
+        const td = cell(money(totals[key]) + " ", "num");
+        const diff = document.createElement("span");
+        diff.className = "muted";
+        diff.textContent = totals[key] === best ? "best" : "+" + money(totals[key] - best);
+        td.append(diff);
+        // Green tick: Tony's advice cost less than both other columns (key above the table).
+        if (key === "tony" && totals.tony < Math.min(totals["1y"], totals.float)) {
+          const tick = document.createElement("span");
+          tick.className = "tick";
+          tick.textContent = "✓";
+          tick.setAttribute("role", "img");
+          tick.setAttribute("aria-label", "cheaper than fix 1 year and float");
+          tick.title = "Cost less than fixing for 1 year and floating";
+          td.append(tick);
+        }
+      }
+      return tr;
+    });
+    document.getElementById("by-start-table").replaceChildren(...rows);
+  }
+
   function currentLoan() {
     const value = Number(document.getElementById("loan").value);
     return value > 0 ? value : D.score.loan;
@@ -334,11 +383,13 @@
     const s = scoreSeries(currentLoan());
     chart.setOption({ series: [{ id: "tony", data: s.tony }, { id: "fix_1y", data: s.fix_1y }, { id: "float", data: s.float }] });
     renderSummary(currentLoan());
+    renderByStart(currentLoan());
   });
   document.getElementById("close").addEventListener("click", () => { document.getElementById("details").hidden = true; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("details").hidden = true; });
   window.addEventListener("resize", () => chart && chart.resize());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
   renderTable();
+  renderByStart(currentLoan());
   draw();
 })();
