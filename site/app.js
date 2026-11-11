@@ -408,7 +408,7 @@
       td.append(icon, word, why);
       return tr;
     });
-    document.getElementById("by-start-table").replaceChildren(...rows);
+    document.getElementById("by-start-table").replaceChildren(...rows.reverse()); // the latest month first
     document.getElementById("by-start-summary").textContent =
       `In the ${judged} start months with ${MIN_MONTHS} months of data or more, Tony's advice was ` +
       `good in ${count.good}, OK in ${count.ok} and not good in ${count.bad}.`;

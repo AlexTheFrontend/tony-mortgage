@@ -160,24 +160,26 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
     // Table of totals by start month (at the bottom). The loan is 1,000,000 here (check 7), so values must be scaled.
     // Columns: 0 start, 1 Tony's advice then, 2-7 float/6m/1y/18m/2y/3y, 8 Tony's advice (total), 9 verdict.
     const bs = await ev(`(() => {
-      const D = window.TONY_DATA, rows = [...document.querySelectorAll('#by-start-table tr')];
+      const D = window.TONY_DATA, rows = [...document.querySelectorAll('#by-start-table tr')].reverse();
       const loan = Number(document.getElementById('loan').value), r = D.by_start ? D.by_start[0] : null;
       const money = (v) => '$' + Math.round(v).toLocaleString('en-NZ');
       return { n: rows.length, want: D.by_start ? D.by_start.length : -1,
         cells: rows[0] ? [...rows[0].cells].map((c) => c.textContent) : [],
         heads: [...document.querySelectorAll('#by-start thead th')].length,
+        top: (document.querySelector('#by-start-table tr td') || {}).textContent || '', last: D.by_start ? D.by_start[D.by_start.length - 1].start : '',
         start: r && r.start, fix1y: r && money(r.totals['1y'] * loan / D.score.loan),
         quarter: !!document.getElementById('by-quarter'),
         note: (document.getElementById('by-start-note') || {}).textContent || '', loanText: money(loan) }; })()`);
     check("16 one table of totals by start month, one row for each month",
       bs.want > 0 && bs.n === bs.want && bs.cells.length === 10 && bs.heads === 10 && bs.cells[0] === bs.start
-        && (bs.cells[4] || "").startsWith(bs.fix1y) && bs.note.includes(bs.loanText) && !bs.quarter,
-      `${bs.n}/${bs.want} rows; first row: ${bs.cells.join(" | ")}; want 1y ${bs.fix1y}; note: ${bs.note.slice(0, 90)}`);
+        && (bs.cells[4] || "").startsWith(bs.fix1y) && bs.note.includes(bs.loanText) && !bs.quarter
+        && bs.top.startsWith(bs.last), // the latest month is the top row
+      `${bs.n}/${bs.want} rows; top row: ${bs.top}, want ${bs.last}; oldest row: ${bs.cells.join(" | ")}; want 1y ${bs.fix1y}; note: ${bs.note.slice(0, 90)}`);
 
     // Green tick next to Tony's advice when it cost less than both "Fix 1 year" and "Always float".
     const ticks = await ev(`(() => {
       const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
-      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const rows = [...document.querySelectorAll('#by-start-table tr')].reverse();
       const bad = [];
       let want = 0;
       D.by_start.forEach((r, i) => {
@@ -195,7 +197,7 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
     // Plain verdict in the last column: Good / OK / Not good, against "Fix 1 year" and "Always float".
     const verdicts = await ev(`(() => {
       const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
-      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const rows = [...document.querySelectorAll('#by-start-table tr')].reverse();
       const bad = [], count = { good: 0, ok: 0, bad: 0 };
       const word = { good: 'Good', ok: 'OK', bad: 'Not good' };
       D.by_start.forEach((r, i) => {
@@ -218,7 +220,7 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
     // Column 1 shows the advice in force in the start month.
     const bests = await ev(`(() => {
       const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
-      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const rows = [...document.querySelectorAll('#by-start-table tr')].reverse();
       const keys = ['float', '6m', '1y', '18m', '2y', '3y', 'tony'];
       const bad = [];
       D.by_start.forEach((r, i) => {
@@ -244,7 +246,7 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
     // A line above the table counts how often each way was the cheapest.
     const tally = await ev(`(() => {
       const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
-      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const rows = [...document.querySelectorAll('#by-start-table tr')].reverse();
       const label = { float: 'Always float', '6m': 'Fix 6 months', '1y': 'Fix 1 year', '18m': 'Fix 18 months',
         '2y': 'Fix 2 years', '3y': 'Fix 3 years', tony: "Tony's advice" };
       const keys = Object.keys(label), n = Object.fromEntries(keys.map((key) => [key, 0])), bad = [];
