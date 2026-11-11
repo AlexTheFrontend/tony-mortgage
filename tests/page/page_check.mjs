@@ -202,16 +202,16 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
         const t = (key) => Math.round(r.totals[key] * k);
         const lo = Math.min(t('1y'), t('float')), hi = Math.max(t('1y'), t('float'));
         const want = t('tony') < lo ? 'good' : t('tony') > hi ? 'bad' : 'ok';
-        count[want]++;
+        if (r.months >= 12) count[want]++;
         const cell = rows[i] && rows[i].cells[9];
         const label = cell && cell.querySelector('.verdict-word');
         if (!label || label.textContent !== word[want] || cell.dataset.verdict !== want) bad.push(r.start + ' want ' + want);
       });
       const sum = document.getElementById('by-start-summary');
-      return { bad, count, total: D.by_start.length, sum: sum ? sum.textContent : '' }; })()`);
+      return { bad, count, total: D.by_start.filter((r) => r.months >= 12).length, sum: sum ? sum.textContent : '' }; })()`);
     check("21 plain verdict for Tony's advice in each row, with a summary",
-      verdicts.bad.length === 0 && verdicts.sum.includes(`good in ${verdicts.count.good} of ${verdicts.total}`)
-        && verdicts.sum.includes(`not good in ${verdicts.count.bad}`),
+      verdicts.bad.length === 0 && verdicts.sum.includes(`In the ${verdicts.total} start months`)
+        && verdicts.sum.includes(`good in ${verdicts.count.good},`) && verdicts.sum.includes(`not good in ${verdicts.count.bad}`),
       `${JSON.stringify(verdicts.count)}; wrong: ${verdicts.bad.slice(0, 4).join(", ") || "none"}; summary: ${verdicts.sum}`);
 
     // The cheapest of the 7 ways is highlighted in each row (class "best" and the word "best").
@@ -239,6 +239,29 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
       return { bad, rows: rows.length }; })()`);
     check("22 best way highlighted in each row, with Tony's advice of that month", bests.rows > 0 && bests.bad.length === 0,
       `${bests.rows} rows; wrong: ${bests.bad.slice(0, 4).join(", ") || "none"}`);
+
+    // Rows with less than 12 months of data are marked "too early" and are not in the counts.
+    // A line above the table counts how often each way was the cheapest.
+    const tally = await ev(`(() => {
+      const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
+      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const label = { float: 'Always float', '6m': 'Fix 6 months', '1y': 'Fix 1 year', '18m': 'Fix 18 months',
+        '2y': 'Fix 2 years', '3y': 'Fix 3 years', tony: "Tony's advice" };
+      const keys = Object.keys(label), n = Object.fromEntries(keys.map((key) => [key, 0])), bad = [];
+      let early = 0;
+      D.by_start.forEach((r, i) => {
+        const isEarly = r.months < 12, tr = rows[i];
+        if (isEarly) early++;
+        if (!tr || tr.classList.contains('early') !== isEarly || tr.cells[0].textContent.includes('too early') !== isEarly) bad.push(r.start);
+        if (isEarly) return;
+        const totals = keys.map((key) => Math.round(r.totals[key] * k)), min = Math.min(...totals);
+        keys.forEach((key, j) => { if (totals[j] === min) n[key]++; });
+      });
+      const text = (document.getElementById('by-start-best') || {}).textContent || '';
+      const missing = keys.filter((key) => !text.includes(label[key] + ' in ' + n[key]));
+      return { bad, early, missing, text }; })()`);
+    check("23 count of best ways, and rows that are too early", tally.bad.length === 0 && tally.missing.length === 0 && tally.early > 0,
+      `${tally.early} early rows; wrong rows: ${tally.bad.slice(0, 4).join(", ") || "none"}; missing: ${tally.missing.join(", ") || "none"}; text: ${tally.text}`);
 
     const pageErrors = errors.splice(0);
     check("9 no console errors on the main page", pageErrors.length === 0, pageErrors.join(" | "));

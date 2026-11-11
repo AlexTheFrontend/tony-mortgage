@@ -16,6 +16,7 @@
   };
   const TERM_LABEL = { 0: "float", 6: "6m", 12: "1y", 18: "18m", 24: "2y", 36: "3y", 48: "4y", 60: "5y" };
   // The ways of borrowing in the table of totals by start month (keys of D.by_start[].totals).
+  const MIN_MONTHS = 12; // a start month with less data than this is "too early" to judge
   const VERDICT_WORD = { good: "Good", ok: "OK", bad: "Not good" };
   const WAY_LABEL = { tony: "Tony's advice", float: "Always float", "6m": "Fix 6 months", "1y": "Fix 1 year",
     "18m": "Fix 18 months", "2y": "Fix 2 years", "3y": "Fix 3 years" };
@@ -335,7 +336,10 @@
       "6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice each time a fixed part ends. " +
       "\"Tony's advice then\" is his advice in the start month. Rows near the end cover only a few months.";
     const count = { good: 0, ok: 0, bad: 0 };
+    const bestCount = Object.fromEntries(ways.map((key) => [key, 0])); // how often each way was the cheapest
+    let judged = 0; // rows with enough months to judge
     const rows = D.by_start.map((r) => {
+      const early = r.months < MIN_MONTHS; // too little data: the row shows, but it is not in the counts
       const totals = Object.fromEntries(Object.entries(r.totals).map(([key, v]) => [key, Math.round(v * k)]));
       const best = Math.min(...ways.map((key) => totals[key]));
       const tr = document.createElement("tr");
@@ -346,7 +350,16 @@
         tr.append(td);
         return td;
       };
-      cell(r.start, "num");
+      const startCell = cell(r.start, "num");
+      if (early) {
+        tr.className = "early";
+        const label = document.createElement("span");
+        label.className = "early-label";
+        label.textContent = "too early";
+        startCell.append(label);
+      } else {
+        judged += 1;
+      }
       let advice = null; // the last advice in or before the start month
       for (const issue of issues) {
         if (issue.date.slice(0, 7) > r.start) break;
@@ -355,6 +368,7 @@
       cell(advice ? adviceLabel(advice) : "No advice yet").dataset.group = advice ? advice.group : "null";
       for (const key of ways) {
         const isBest = totals[key] === best;
+        if (isBest && !early) bestCount[key] += 1;
         const td = cell(money(totals[key]), isBest ? "num best" : "num");
         if (isBest) {
           const label = document.createElement("span");
@@ -377,7 +391,7 @@
       const simple = totals["1y"] <= totals.float ? "1y" : "float"; // the cheaper simple way
       const gap = totals.tony - totals[simple];
       const verdict = gap < 0 ? "good" : totals.tony > Math.max(totals["1y"], totals.float) ? "bad" : "ok";
-      count[verdict] += 1;
+      if (!early) count[verdict] += 1;
       const td = cell("", "verdict");
       td.dataset.verdict = verdict;
       const icon = document.createElement("span"); // the word carries the meaning; the icon only repeats it
@@ -396,8 +410,10 @@
     });
     document.getElementById("by-start-table").replaceChildren(...rows);
     document.getElementById("by-start-summary").textContent =
-      `Tony's advice was good in ${count.good} of ${rows.length} start months, OK in ${count.ok} ` +
-      `and not good in ${count.bad}.`;
+      `In the ${judged} start months with ${MIN_MONTHS} months of data or more, Tony's advice was ` +
+      `good in ${count.good}, OK in ${count.ok} and not good in ${count.bad}.`;
+    document.getElementById("by-start-best").textContent = "The cheapest way in those months: " +
+      ways.slice().sort((a, b) => bestCount[b] - bestCount[a]).map((key) => `${WAY_LABEL[key]} in ${bestCount[key]}`).join(", ") + ".";
   }
 
   function currentLoan() {
