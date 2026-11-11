@@ -324,16 +324,20 @@
   }
 
   // Totals from each start month to the last B20 month: the cheapest way, then 1 year, Tony and float.
+  // One row for each start month: the total interest of each of the 7 ways from that month to the end.
+  // The cheapest way in the row is highlighted. The last column is the plain verdict for Tony's advice.
   function renderByStart(loan) {
     const k = loan / D.score.loan; // the score is linear in the loan
+    const ways = ["float", "6m", "1y", "18m", "2y", "3y", "tony"]; // the order of the columns
     document.getElementById("by-start-note").textContent =
       `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, ` +
-      `on a ${money(loan)} interest-only loan. "Best" is the cheapest of 7 ways: always float, ` +
-      "always fix for 6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice.";
+      `on a ${money(loan)} interest-only loan. Each row compares 7 ways: always float, always fix for ` +
+      "6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice each time a fixed part ends. " +
+      "\"Tony's advice then\" is his advice in the start month. Rows near the end cover only a few months.";
     const count = { good: 0, ok: 0, bad: 0 };
     const rows = D.by_start.map((r) => {
       const totals = Object.fromEntries(Object.entries(r.totals).map(([key, v]) => [key, Math.round(v * k)]));
-      const best = Math.min(...Object.values(totals));
+      const best = Math.min(...ways.map((key) => totals[key]));
       const tr = document.createElement("tr");
       const cell = (text, cls) => {
         const td = document.createElement("td");
@@ -343,15 +347,22 @@
         return td;
       };
       cell(r.start, "num");
-      const names = Object.keys(WAY_LABEL).filter((key) => totals[key] === best).map((key) => WAY_LABEL[key]);
-      cell(`${names.join(", ")}: ${money(best)}`);
-      for (const key of ["1y", "tony", "float"]) {
-        const td = cell(money(totals[key]) + " ", "num");
-        const diff = document.createElement("span");
-        diff.className = "muted";
-        diff.textContent = totals[key] === best ? "best" : "+" + money(totals[key] - best);
-        td.append(diff);
-        // Green tick: Tony's advice cost less than both other columns (key above the table).
+      let advice = null; // the last advice in or before the start month
+      for (const issue of issues) {
+        if (issue.date.slice(0, 7) > r.start) break;
+        if (issue.borrower.group !== "none") advice = issue.borrower;
+      }
+      cell(advice ? adviceLabel(advice) : "No advice yet").dataset.group = advice ? advice.group : "null";
+      for (const key of ways) {
+        const isBest = totals[key] === best;
+        const td = cell(money(totals[key]), isBest ? "num best" : "num");
+        if (isBest) {
+          const label = document.createElement("span");
+          label.className = "muted";
+          label.textContent = "best";
+          td.append(label);
+        }
+        // Green tick: Tony's advice cost less than both "Fix 1 year" and "Always float" (key above the table).
         if (key === "tony" && totals.tony < Math.min(totals["1y"], totals.float)) {
           const tick = document.createElement("span");
           tick.className = "tick";
@@ -389,64 +400,6 @@
       `and not good in ${count.bad}.`;
   }
 
-  // The terms (months) that one issue tells a borrower to fix for; null = no advice. Same rule as the score.
-  function adviceTerms(b) {
-    if (b.group === "none") return null;
-    if (b.group === "float") return [0];
-    if (b.group === "3y_plus") return [36];
-    if (b.group === "mix") return b.terms_months.map((t) => Math.min(t, 36));
-    return [Math.min(b.terms_months[0], 36)];
-  }
-
-  // One row for each quarter: Tony's advice at the start, and the cheapest fixed way from then to the end.
-  function renderByQuarter(loan) {
-    const k = loan / D.score.loan;
-    const steps = [0, 6, 12, 18, 24, 36];
-    const termOf = { float: 0, "6m": 6, "1y": 12, "18m": 18, "2y": 24, "3y": 36 };
-    document.getElementById("by-quarter-note").textContent =
-      `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, on a ${money(loan)} ` +
-      'interest-only loan. "Best way" is the cheapest of 6 ways that never change: always float, or always fix for ' +
-      "6 months, 1 year, 18 months, 2 years or 3 years. Rows near the end cover only a few months, so their result can change.";
-    const rows = D.by_start.filter((r) => Number(r.start.slice(5)) % 3 === 1).map((r) => {
-      const tr = document.createElement("tr");
-      const cell = (text, cls) => {
-        const td = document.createElement("td");
-        td.textContent = text;
-        if (cls) td.className = cls;
-        tr.append(td);
-        return td;
-      };
-      let advice = null; // the last advice in or before the start month
-      for (const issue of issues) {
-        if (issue.date.slice(0, 7) > r.start) break;
-        if (issue.borrower.group !== "none") advice = issue.borrower;
-      }
-      const terms = advice ? adviceTerms(advice) : [12];
-      const fixed = Object.keys(termOf).map((key) => [key, Math.round(r.totals[key] * k)]);
-      const best = fixed.reduce((a, b) => (b[1] < a[1] ? b : a));
-      const extra = Math.round(r.totals.tony * k) - best[1];
-      const bestStep = steps.indexOf(termOf[best[0]]);
-      const gap = Math.min(...terms.map((t) => Math.abs(steps.indexOf(t) - bestStep)));
-      const right = terms.length === 1 && gap === 0 ? "good" : gap <= 1 ? "ok" : "bad";
-      cell(r.start, "num");
-      cell(advice ? adviceLabel(advice) : "No advice yet");
-      cell(`${WAY_LABEL[best[0]]}: ${money(best[1])}`);
-      cell(extra === 0 ? "The same cost" : `${money(Math.abs(extra))} ${extra > 0 ? "more" : "less"}`, "num");
-      const td = cell("", "verdict");
-      td.dataset.verdict = right;
-      const icon = document.createElement("span");
-      icon.className = right === "good" ? "tick" : right === "bad" ? "cross" : "tick muted";
-      icon.textContent = right === "good" ? "✓" : right === "bad" ? "✗" : "";
-      icon.setAttribute("aria-hidden", "true");
-      const word = document.createElement("span");
-      word.className = "verdict-word";
-      word.textContent = { good: "Yes", ok: "Close", bad: "No" }[right];
-      td.append(icon, word);
-      return tr;
-    });
-    document.getElementById("by-quarter-table").replaceChildren(...rows);
-  }
-
   function currentLoan() {
     const value = Number(document.getElementById("loan").value);
     return value > 0 ? value : D.score.loan;
@@ -472,13 +425,13 @@
     const s = scoreSeries(currentLoan());
     chart.setOption({ series: [{ id: "tony", data: s.tony }, { id: "fix_1y", data: s.fix_1y }, { id: "float", data: s.float }] });
     renderSummary(currentLoan());
-    renderByStart(currentLoan()); renderByQuarter(currentLoan());
+    renderByStart(currentLoan());
   });
   document.getElementById("close").addEventListener("click", () => { document.getElementById("details").hidden = true; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("details").hidden = true; });
   window.addEventListener("resize", () => chart && chart.resize());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
   renderTable();
-  renderByStart(currentLoan()); renderByQuarter(currentLoan());
+  renderByStart(currentLoan());
   draw();
 })();

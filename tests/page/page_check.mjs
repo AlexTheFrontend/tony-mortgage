@@ -158,17 +158,20 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
     check("15 click on the advice strip opens that week's issue", stripClickBad.length === 0, `${sample.length - stripClickBad.length}/${sample.length} ok; ${stripClickBad.slice(0, 3).join("; ")}`);
 
     // Table of totals by start month (at the bottom). The loan is 1,000,000 here (check 7), so values must be scaled.
+    // Columns: 0 start, 1 Tony's advice then, 2-7 float/6m/1y/18m/2y/3y, 8 Tony's advice (total), 9 verdict.
     const bs = await ev(`(() => {
       const D = window.TONY_DATA, rows = [...document.querySelectorAll('#by-start-table tr')];
       const loan = Number(document.getElementById('loan').value), r = D.by_start ? D.by_start[0] : null;
       const money = (v) => '$' + Math.round(v).toLocaleString('en-NZ');
       return { n: rows.length, want: D.by_start ? D.by_start.length : -1,
         cells: rows[0] ? [...rows[0].cells].map((c) => c.textContent) : [],
+        heads: [...document.querySelectorAll('#by-start thead th')].length,
         start: r && r.start, fix1y: r && money(r.totals['1y'] * loan / D.score.loan),
+        quarter: !!document.getElementById('by-quarter'),
         note: (document.getElementById('by-start-note') || {}).textContent || '', loanText: money(loan) }; })()`);
-    check("16 table of totals by start month",
-      bs.want > 0 && bs.n === bs.want && bs.cells[0] === bs.start && /^(Fix|Always|Tony)/.test(bs.cells[1] || "")
-        && (bs.cells[2] || "").startsWith(bs.fix1y) && bs.note.includes(bs.loanText),
+    check("16 one table of totals by start month, one row for each month",
+      bs.want > 0 && bs.n === bs.want && bs.cells.length === 10 && bs.heads === 10 && bs.cells[0] === bs.start
+        && (bs.cells[4] || "").startsWith(bs.fix1y) && bs.note.includes(bs.loanText) && !bs.quarter,
       `${bs.n}/${bs.want} rows; first row: ${bs.cells.join(" | ")}; want 1y ${bs.fix1y}; note: ${bs.note.slice(0, 90)}`);
 
     // Green tick next to Tony's advice when it cost less than both "Fix 1 year" and "Always float".
@@ -181,7 +184,7 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
         const t = (key) => Math.round(r.totals[key] * k);
         const expected = t('tony') < Math.min(t('1y'), t('float'));
         if (expected) want++;
-        const has = !!(rows[i] && rows[i].cells[3] && rows[i].cells[3].querySelector('.tick'));
+        const has = !!(rows[i] && rows[i].cells[8] && rows[i].cells[8].querySelector('.tick'));
         if (has !== expected) bad.push(r.start + (expected ? ' missing' : ' extra'));
       });
       const key = document.getElementById('by-start-key');
@@ -200,7 +203,7 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
         const lo = Math.min(t('1y'), t('float')), hi = Math.max(t('1y'), t('float'));
         const want = t('tony') < lo ? 'good' : t('tony') > hi ? 'bad' : 'ok';
         count[want]++;
-        const cell = rows[i] && rows[i].cells[5];
+        const cell = rows[i] && rows[i].cells[9];
         const label = cell && cell.querySelector('.verdict-word');
         if (!label || label.textContent !== word[want] || cell.dataset.verdict !== want) bad.push(r.start + ' want ' + want);
       });
@@ -211,36 +214,31 @@ export async function checkPage({ port, pageUrl, xssUrl, outDir, tz }) {
         && verdicts.sum.includes(`not good in ${verdicts.count.bad}`),
       `${JSON.stringify(verdicts.count)}; wrong: ${verdicts.bad.slice(0, 4).join(", ") || "none"}; summary: ${verdicts.sum}`);
 
-    // Quarterly table: Tony's advice at the start, the best fixed way afterwards, and the difference.
-    const quarters = await ev(`(() => {
+    // The cheapest of the 7 ways is highlighted in each row (class "best" and the word "best").
+    // Column 1 shows the advice in force in the start month.
+    const bests = await ev(`(() => {
       const D = window.TONY_DATA, k = Number(document.getElementById('loan').value) / D.score.loan;
-      const money = (v) => '$' + Math.round(v).toLocaleString('en-NZ');
-      const rows = [...document.querySelectorAll('#by-quarter-table tr')];
-      const want = D.by_start.filter((r) => Number(r.start.slice(5)) % 3 === 1);
-      const steps = [0, 6, 12, 18, 24, 36], termOf = { float: 0, '6m': 6, '1y': 12, '18m': 18, '2y': 24, '3y': 36 };
+      const rows = [...document.querySelectorAll('#by-start-table tr')];
+      const keys = ['float', '6m', '1y', '18m', '2y', '3y', 'tony'];
       const bad = [];
-      want.forEach((r, i) => {
-        const fixed = Object.keys(termOf).map((key) => [key, Math.round(r.totals[key] * k)]);
-        const best = fixed.reduce((a, b) => (b[1] < a[1] ? b : a));
-        let terms = [12];
+      D.by_start.forEach((r, i) => {
+        const totals = keys.map((key) => Math.round(r.totals[key] * k)), min = Math.min(...totals);
+        keys.forEach((key, j) => {
+          const cell = rows[i] && rows[i].cells[2 + j];
+          const marked = !!cell && cell.classList.contains('best') && cell.textContent.includes('best');
+          if (marked !== (totals[j] === min)) bad.push(r.start + ' ' + key);
+        });
+        let group = null;
         for (const issue of D.issues) {
           if (issue.date.slice(0, 7) > r.start) break;
-          const b = issue.borrower;
-          if (b.group === 'none') continue;
-          terms = b.group === 'float' ? [0] : b.group === '3y_plus' ? [36]
-            : b.group === 'mix' ? b.terms_months.map((t) => Math.min(t, 36)) : [Math.min(b.terms_months[0], 36)];
+          if (issue.borrower.group !== 'none') group = issue.borrower.group;
         }
-        const bestStep = steps.indexOf(termOf[best[0]]);
-        const gap = Math.min(...terms.map((t) => Math.abs(steps.indexOf(t) - bestStep)));
-        const right = terms.length === 1 && gap === 0 ? 'Yes' : gap <= 1 ? 'Close' : 'No';
-        const c = rows[i] ? [...rows[i].cells].map((x) => x.textContent) : [];
-        const extra = Math.round(r.totals.tony * k) - best[1];
-        if (c[0] !== r.start || !(c[2] || '').includes(money(best[1])) || !(c[3] || '').includes(money(Math.abs(extra)))
-          || (c[4] || '').replace(/^[✓✗]/, '') !== right) bad.push(r.start + ': ' + c.join(' | '));
+        const cell = rows[i] && rows[i].cells[1];
+        if (!cell || cell.dataset.group !== String(group)) bad.push(r.start + ' advice ' + group);
       });
-      return { n: rows.length, want: want.length, bad }; })()`);
-    check("22 quarterly table of best decisions", quarters.want > 0 && quarters.n === quarters.want && quarters.bad.length === 0,
-      `${quarters.n}/${quarters.want} rows; wrong: ${quarters.bad.slice(0, 2).join("; ") || "none"}`);
+      return { bad, rows: rows.length }; })()`);
+    check("22 best way highlighted in each row, with Tony's advice of that month", bests.rows > 0 && bests.bad.length === 0,
+      `${bests.rows} rows; wrong: ${bests.bad.slice(0, 4).join(", ") || "none"}`);
 
     const pageErrors = errors.splice(0);
     check("9 no console errors on the main page", pageErrors.length === 0, pageErrors.join(" | "));
