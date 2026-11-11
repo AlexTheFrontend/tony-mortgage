@@ -16,6 +16,7 @@
   };
   const TERM_LABEL = { 0: "float", 6: "6m", 12: "1y", 18: "18m", 24: "2y", 36: "3y", 48: "4y", 60: "5y" };
   // The ways of borrowing in the table of totals by start month (keys of D.by_start[].totals).
+  const VERDICT_WORD = { good: "Good", ok: "OK", bad: "Not good" };
   const WAY_LABEL = { tony: "Tony's advice", float: "Always float", "6m": "Fix 6 months", "1y": "Fix 1 year",
     "18m": "Fix 18 months", "2y": "Fix 2 years", "3y": "Fix 3 years" };
   // Tony's lowest lender rates are drawn for these terms, in the colour of the matching mortgage line.
@@ -45,6 +46,9 @@
   });
   let C = {}; // colours, read from the CSS tokens on each draw
   let chart = null;
+  const DAY_SERIES = "Day";
+  const allDays = [];
+  for (let day = issues[0].date; day <= endDate; day = addDays(day, 1)) allDays.push(day);
   let pointerIssue = null; // the issue in the tooltip; a click opens it
 
   // ECharts reads "YYYY-MM-DD" as local midnight, so dates go back to text in local time too.
@@ -199,7 +203,7 @@
       tooltip: {
         trigger: "axis", confine: true, axisPointer: { type: "line" },
         backgroundColor: C.panel, borderColor: C.grid, textStyle: { color: C.fg },
-        formatter: (params) => tooltipHtml(params[0].axisValue),
+        formatter: (params) => tooltipHtml((params.find((q) => q.seriesName === DAY_SERIES) || params[0]).axisValue),
       },
       dataZoom: [
         { type: "slider", xAxisIndex: [0, 1, 2, 3], top: SLIDER_TOP, height: 22, right: GRID_RIGHT,
@@ -227,6 +231,10 @@
         // tooltip off: the strip must not pull the hover line to the nearest block edge.
         { name: "Advice", type: "custom", xAxisIndex: 1, yAxisIndex: 1, renderItem: renderAdvice, tooltip: { show: false },
           encode: { x: [0, 1], y: 2 }, data: adviceRuns.map((c) => c.value) },
+        // Hidden, one point for each day: the hover date comes from here. Without it the date snaps to the
+        // nearest Reserve Bank day, which is wrong for issues newer than the Reserve Bank data.
+        { name: DAY_SERIES, type: "line", xAxisIndex: 1, yAxisIndex: 1, silent: true, symbol: "none",
+          lineStyle: { opacity: 0 }, data: allDays.map((day) => [day, 0]) },
         { name: "Tone", type: "bar", xAxisIndex: 2, yAxisIndex: 2, barMaxWidth: 6,
           data: issues.map((r) => ({ value: [r.date, r.tone.score],
             itemStyle: { color: r.tone.score >= 0 ? C.pos : C.neg } })) },
@@ -322,6 +330,7 @@
       `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, ` +
       `on a ${money(loan)} interest-only loan. "Best" is the cheapest of 7 ways: always float, ` +
       "always fix for 6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice.";
+    const count = { good: 0, ok: 0, bad: 0 };
     const rows = D.by_start.map((r) => {
       const totals = Object.fromEntries(Object.entries(r.totals).map(([key, v]) => [key, Math.round(v * k)]));
       const best = Math.min(...Object.values(totals));
@@ -353,9 +362,89 @@
           td.append(tick);
         }
       }
+      // Plain verdict: Tony's advice against the 2 simple ways, "Fix 1 year" and "Always float".
+      const simple = totals["1y"] <= totals.float ? "1y" : "float"; // the cheaper simple way
+      const gap = totals.tony - totals[simple];
+      const verdict = gap < 0 ? "good" : totals.tony > Math.max(totals["1y"], totals.float) ? "bad" : "ok";
+      count[verdict] += 1;
+      const td = cell("", "verdict");
+      td.dataset.verdict = verdict;
+      const icon = document.createElement("span"); // the word carries the meaning; the icon only repeats it
+      icon.className = verdict === "good" ? "tick" : verdict === "bad" ? "cross" : "tick muted";
+      icon.textContent = verdict === "good" ? "✓" : verdict === "bad" ? "✗" : "";
+      icon.setAttribute("aria-hidden", "true");
+      const word = document.createElement("span");
+      word.className = "verdict-word";
+      word.textContent = VERDICT_WORD[verdict];
+      const why = document.createElement("span");
+      why.className = "muted";
+      why.textContent = gap === 0 ? ` - the same as ${WAY_LABEL[simple]}`
+        : ` - ${money(Math.abs(gap))} ${gap < 0 ? "less" : "more"} than ${WAY_LABEL[simple]}`;
+      td.append(icon, word, why);
       return tr;
     });
     document.getElementById("by-start-table").replaceChildren(...rows);
+    document.getElementById("by-start-summary").textContent =
+      `Tony's advice was good in ${count.good} of ${rows.length} start months, OK in ${count.ok} ` +
+      `and not good in ${count.bad}.`;
+  }
+
+  // The terms (months) that one issue tells a borrower to fix for; null = no advice. Same rule as the score.
+  function adviceTerms(b) {
+    if (b.group === "none") return null;
+    if (b.group === "float") return [0];
+    if (b.group === "3y_plus") return [36];
+    if (b.group === "mix") return b.terms_months.map((t) => Math.min(t, 36));
+    return [Math.min(b.terms_months[0], 36)];
+  }
+
+  // One row for each quarter: Tony's advice at the start, and the cheapest fixed way from then to the end.
+  function renderByQuarter(loan) {
+    const k = loan / D.score.loan;
+    const steps = [0, 6, 12, 18, 24, 36];
+    const termOf = { float: 0, "6m": 6, "1y": 12, "18m": 18, "2y": 24, "3y": 36 };
+    document.getElementById("by-quarter-note").textContent =
+      `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, on a ${money(loan)} ` +
+      'interest-only loan. "Best way" is the cheapest of 6 ways that never change: always float, or always fix for ' +
+      "6 months, 1 year, 18 months, 2 years or 3 years. Rows near the end cover only a few months, so their result can change.";
+    const rows = D.by_start.filter((r) => Number(r.start.slice(5)) % 3 === 1).map((r) => {
+      const tr = document.createElement("tr");
+      const cell = (text, cls) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (cls) td.className = cls;
+        tr.append(td);
+        return td;
+      };
+      let advice = null; // the last advice in or before the start month
+      for (const issue of issues) {
+        if (issue.date.slice(0, 7) > r.start) break;
+        if (issue.borrower.group !== "none") advice = issue.borrower;
+      }
+      const terms = advice ? adviceTerms(advice) : [12];
+      const fixed = Object.keys(termOf).map((key) => [key, Math.round(r.totals[key] * k)]);
+      const best = fixed.reduce((a, b) => (b[1] < a[1] ? b : a));
+      const extra = Math.round(r.totals.tony * k) - best[1];
+      const bestStep = steps.indexOf(termOf[best[0]]);
+      const gap = Math.min(...terms.map((t) => Math.abs(steps.indexOf(t) - bestStep)));
+      const right = terms.length === 1 && gap === 0 ? "good" : gap <= 1 ? "ok" : "bad";
+      cell(r.start, "num");
+      cell(advice ? adviceLabel(advice) : "No advice yet");
+      cell(`${WAY_LABEL[best[0]]}: ${money(best[1])}`);
+      cell(extra === 0 ? "The same cost" : `${money(Math.abs(extra))} ${extra > 0 ? "more" : "less"}`, "num");
+      const td = cell("", "verdict");
+      td.dataset.verdict = right;
+      const icon = document.createElement("span");
+      icon.className = right === "good" ? "tick" : right === "bad" ? "cross" : "tick muted";
+      icon.textContent = right === "good" ? "✓" : right === "bad" ? "✗" : "";
+      icon.setAttribute("aria-hidden", "true");
+      const word = document.createElement("span");
+      word.className = "verdict-word";
+      word.textContent = { good: "Yes", ok: "Close", bad: "No" }[right];
+      td.append(icon, word);
+      return tr;
+    });
+    document.getElementById("by-quarter-table").replaceChildren(...rows);
   }
 
   function currentLoan() {
@@ -383,13 +472,13 @@
     const s = scoreSeries(currentLoan());
     chart.setOption({ series: [{ id: "tony", data: s.tony }, { id: "fix_1y", data: s.fix_1y }, { id: "float", data: s.float }] });
     renderSummary(currentLoan());
-    renderByStart(currentLoan());
+    renderByStart(currentLoan()); renderByQuarter(currentLoan());
   });
   document.getElementById("close").addEventListener("click", () => { document.getElementById("details").hidden = true; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("details").hidden = true; });
   window.addEventListener("resize", () => chart && chart.resize());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
   renderTable();
-  renderByStart(currentLoan());
+  renderByStart(currentLoan()); renderByQuarter(currentLoan());
   draw();
 })();

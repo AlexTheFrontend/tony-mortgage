@@ -44,12 +44,17 @@ header h1 { margin: 0 0 4px; font-size: 22px; }
 .table-wrap th, .table-wrap td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--grid); vertical-align: top; }
 .table-wrap th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
 .table-wrap td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-#by-start { margin-top: 20px; }
-#by-start h2 { font-size: 16px; margin: 0 0 4px; }
-#by-start .note { font-size: 13px; margin: 0; }
+#by-start, #by-quarter { margin-top: 20px; }
+#by-start h2, #by-quarter h2 { font-size: 16px; margin: 0 0 4px; }
+#by-start .note, #by-quarter .note { font-size: 13px; margin: 0; }
 .muted { color: var(--muted); }
 .tick { color: var(--good); font-weight: 700; margin-left: 6px; }
 #by-start-key .tick { margin: 0 4px 0 0; }
+.cross { color: var(--neg); font-weight: 700; }
+#by-start-summary { font-size: 15px; font-weight: 600; margin: 6px 0 4px; }
+td.verdict { white-space: nowrap; }
+td.verdict .tick, td.verdict .cross { margin: 0 6px 0 0; display: inline-block; width: 1em; }
+.verdict-word { font-weight: 600; }
 footer { margin-top: 12px; font-size: 13px; }
 footer input { width: 120px; font: inherit; }
 a { color: var(--m1); }
