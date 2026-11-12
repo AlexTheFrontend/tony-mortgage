@@ -13,6 +13,8 @@ from typing import Callable
 RATE_KEY = {0: "float", 6: "6m", 12: "1y", 18: "18m", 24: "2y", 36: "3y"}
 LONGEST = 36  # a longer term is fixed for 3 years at the 3-year rate
 DEFAULT_TERMS = [12]  # before the first advice
+# One fixed choice for the whole time, keyed like the B20 rates.
+SINGLE_TERMS = {"float": [0], "6m": [6], "1y": [12], "18m": [18], "2y": [24], "3y": [36]}
 
 
 @dataclass
@@ -99,10 +101,18 @@ def month_range(first: str, last: str) -> list[str]:
     return out
 
 
+def _rates_by_month(b20: dict[str, list[tuple[date, float]]]) -> dict[str, dict[str, float]]:
+    return {key: {day.strftime("%Y-%m"): value for day, value in series} for key, series in b20.items()}
+
+
+def _last_month(rates: dict[str, dict[str, float]]) -> str:
+    return max(m for series in rates.values() for m in series)
+
+
 def score(records: list[dict], b20: dict[str, list[tuple[date, float]]], loan: float) -> dict:
-    rates = {key: {day.strftime("%Y-%m"): value for day, value in series} for key, series in b20.items()}
+    rates = _rates_by_month(b20)
     first = min(r["date"] for r in records)[:7]
-    last = max(m for series in rates.values() for m in series)
+    last = _last_month(rates)
     months = month_range(first, last)  # every month, so a gap in B20 stops in rate_for
     return {
         "loan": loan,
@@ -111,3 +121,22 @@ def score(records: list[dict], b20: dict[str, list[tuple[date, float]]], loan: f
         "fix_1y": run_strategy(months, lambda m: [12], rates, loan),
         "float": run_strategy(months, lambda m: [0], rates, loan),
     }
+
+
+def score_by_start(records: list[dict], b20: dict[str, list[tuple[date, float]]], loan: float) -> list[dict]:
+    """For each start month: total interest from that month to the last B20 month.
+
+    One total for Tony's advice (the advice in force at each month) and one for
+    each single term in SINGLE_TERMS.
+    """
+    rates = _rates_by_month(b20)
+    last = _last_month(rates)
+    advice = latest_advice(records)
+    rows = []
+    for start in month_range(min(r["date"] for r in records)[:7], last):
+        months = month_range(start, last)
+        totals = {"tony": run_strategy(months, advice, rates, loan)[-1]}
+        for key, terms in SINGLE_TERMS.items():
+            totals[key] = run_strategy(months, lambda m, t=terms: t, rates, loan)[-1]
+        rows.append({"start": start, "months": len(months), "totals": totals})
+    return rows

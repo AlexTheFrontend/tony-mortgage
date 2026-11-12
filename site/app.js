@@ -16,6 +16,8 @@
   };
   const TERM_LABEL = { 0: "float", 6: "6m", 12: "1y", 18: "18m", 24: "2y", 36: "3y", 48: "4y", 60: "5y" };
   // The ways of borrowing in the table of totals by start month (keys of D.by_start[].totals).
+  const MIN_MONTHS = 12; // a start month with less data than this is "too early" to judge
+  const VERDICT_WORD = { good: "Good", ok: "OK", bad: "Not good" };
   const WAY_LABEL = { tony: "Tony's advice", float: "Always float", "6m": "Fix 6 months", "1y": "Fix 1 year",
     "18m": "Fix 18 months", "2y": "Fix 2 years", "3y": "Fix 3 years" };
   // Tony's lowest lender rates are drawn for these terms, in the colour of the matching mortgage line.
@@ -45,6 +47,9 @@
   });
   let C = {}; // colours, read from the CSS tokens on each draw
   let chart = null;
+  const DAY_SERIES = "Day";
+  const allDays = [];
+  for (let day = issues[0].date; day <= endDate; day = addDays(day, 1)) allDays.push(day);
   let pointerIssue = null; // the issue in the tooltip; a click opens it
 
   // ECharts reads "YYYY-MM-DD" as local midnight, so dates go back to text in local time too.
@@ -199,7 +204,7 @@
       tooltip: {
         trigger: "axis", confine: true, axisPointer: { type: "line" },
         backgroundColor: C.panel, borderColor: C.grid, textStyle: { color: C.fg },
-        formatter: (params) => tooltipHtml(params[0].axisValue),
+        formatter: (params) => tooltipHtml((params.find((q) => q.seriesName === DAY_SERIES) || params[0]).axisValue),
       },
       dataZoom: [
         { type: "slider", xAxisIndex: [0, 1, 2, 3], top: SLIDER_TOP, height: 22, right: GRID_RIGHT,
@@ -227,6 +232,10 @@
         // tooltip off: the strip must not pull the hover line to the nearest block edge.
         { name: "Advice", type: "custom", xAxisIndex: 1, yAxisIndex: 1, renderItem: renderAdvice, tooltip: { show: false },
           encode: { x: [0, 1], y: 2 }, data: adviceRuns.map((c) => c.value) },
+        // Hidden, one point for each day: the hover date comes from here. Without it the date snaps to the
+        // nearest Reserve Bank day, which is wrong for issues newer than the Reserve Bank data.
+        { name: DAY_SERIES, type: "line", xAxisIndex: 1, yAxisIndex: 1, silent: true, symbol: "none",
+          lineStyle: { opacity: 0 }, data: allDays.map((day) => [day, 0]) },
         { name: "Tone", type: "bar", xAxisIndex: 2, yAxisIndex: 2, barMaxWidth: 6,
           data: issues.map((r) => ({ value: [r.date, r.tone.score],
             itemStyle: { color: r.tone.score >= 0 ? C.pos : C.neg } })) },
@@ -316,15 +325,23 @@
   }
 
   // Totals from each start month to the last B20 month: the cheapest way, then 1 year, Tony and float.
+  // One row for each start month: the total interest of each of the 7 ways from that month to the end.
+  // The cheapest way in the row is highlighted. The last column is the plain verdict for Tony's advice.
   function renderByStart(loan) {
     const k = loan / D.score.loan; // the score is linear in the loan
+    const ways = ["float", "6m", "1y", "18m", "2y", "3y", "tony"]; // the order of the columns
     document.getElementById("by-start-note").textContent =
       `Total interest from the start month to ${D.score.months[D.score.months.length - 1]}, ` +
-      `on a ${money(loan)} interest-only loan. "Best" is the cheapest of 7 ways: always float, ` +
-      "always fix for 6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice.";
+      `on a ${money(loan)} interest-only loan. Each row compares 7 ways: always float, always fix for ` +
+      "6 months, 1 year, 18 months, 2 years or 3 years, or follow Tony's advice each time a fixed part ends. " +
+      "\"Tony's advice then\" is his advice in the start month. Rows near the end cover only a few months.";
+    const count = { good: 0, ok: 0, bad: 0 };
+    const bestCount = Object.fromEntries(ways.map((key) => [key, 0])); // how often each way was the cheapest
+    let judged = 0; // rows with enough months to judge
     const rows = D.by_start.map((r) => {
+      const early = r.months < MIN_MONTHS; // too little data: the row shows, but it is not in the counts
       const totals = Object.fromEntries(Object.entries(r.totals).map(([key, v]) => [key, Math.round(v * k)]));
-      const best = Math.min(...Object.values(totals));
+      const best = Math.min(...ways.map((key) => totals[key]));
       const tr = document.createElement("tr");
       const cell = (text, cls) => {
         const td = document.createElement("td");
@@ -333,16 +350,33 @@
         tr.append(td);
         return td;
       };
-      cell(r.start, "num");
-      const names = Object.keys(WAY_LABEL).filter((key) => totals[key] === best).map((key) => WAY_LABEL[key]);
-      cell(`${names.join(", ")}: ${money(best)}`);
-      for (const key of ["1y", "tony", "float"]) {
-        const td = cell(money(totals[key]) + " ", "num");
-        const diff = document.createElement("span");
-        diff.className = "muted";
-        diff.textContent = totals[key] === best ? "best" : "+" + money(totals[key] - best);
-        td.append(diff);
-        // Green tick: Tony's advice cost less than both other columns (key above the table).
+      const startCell = cell(r.start, "num");
+      if (early) {
+        tr.className = "early";
+        const label = document.createElement("span");
+        label.className = "early-label";
+        label.textContent = "too early";
+        startCell.append(label);
+      } else {
+        judged += 1;
+      }
+      let advice = null; // the last advice in or before the start month
+      for (const issue of issues) {
+        if (issue.date.slice(0, 7) > r.start) break;
+        if (issue.borrower.group !== "none") advice = issue.borrower;
+      }
+      cell(advice ? adviceLabel(advice) : "No advice yet").dataset.group = advice ? advice.group : "null";
+      for (const key of ways) {
+        const isBest = totals[key] === best;
+        if (isBest && !early) bestCount[key] += 1;
+        const td = cell(money(totals[key]), isBest ? "num best" : "num");
+        if (isBest) {
+          const label = document.createElement("span");
+          label.className = "muted";
+          label.textContent = "best";
+          td.append(label);
+        }
+        // Green tick: Tony's advice cost less than both "Fix 1 year" and "Always float" (key above the table).
         if (key === "tony" && totals.tony < Math.min(totals["1y"], totals.float)) {
           const tick = document.createElement("span");
           tick.className = "tick";
@@ -353,9 +387,33 @@
           td.append(tick);
         }
       }
+      // Plain verdict: Tony's advice against the 2 simple ways, "Fix 1 year" and "Always float".
+      const simple = totals["1y"] <= totals.float ? "1y" : "float"; // the cheaper simple way
+      const gap = totals.tony - totals[simple];
+      const verdict = gap < 0 ? "good" : totals.tony > Math.max(totals["1y"], totals.float) ? "bad" : "ok";
+      if (!early) count[verdict] += 1;
+      const td = cell("", "verdict");
+      td.dataset.verdict = verdict;
+      const icon = document.createElement("span"); // the word carries the meaning; the icon only repeats it
+      icon.className = verdict === "good" ? "tick" : verdict === "bad" ? "cross" : "tick muted";
+      icon.textContent = verdict === "good" ? "✓" : verdict === "bad" ? "✗" : "";
+      icon.setAttribute("aria-hidden", "true");
+      const word = document.createElement("span");
+      word.className = "verdict-word";
+      word.textContent = VERDICT_WORD[verdict];
+      const why = document.createElement("span");
+      why.className = "muted";
+      why.textContent = gap === 0 ? ` - the same as ${WAY_LABEL[simple]}`
+        : ` - ${money(Math.abs(gap))} ${gap < 0 ? "less" : "more"} than ${WAY_LABEL[simple]}`;
+      td.append(icon, word, why);
       return tr;
     });
-    document.getElementById("by-start-table").replaceChildren(...rows);
+    document.getElementById("by-start-table").replaceChildren(...rows.reverse()); // the latest month first
+    document.getElementById("by-start-summary").textContent =
+      `In the ${judged} start months with ${MIN_MONTHS} months of data or more, Tony's advice was ` +
+      `good in ${count.good}, OK in ${count.ok} and not good in ${count.bad}.`;
+    document.getElementById("by-start-best").textContent = "The cheapest way in those months: " +
+      ways.slice().sort((a, b) => bestCount[b] - bestCount[a]).map((key) => `${WAY_LABEL[key]} in ${bestCount[key]}`).join(", ") + ".";
   }
 
   function currentLoan() {

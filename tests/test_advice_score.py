@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from scripts.advice_score import advice_terms, latest_advice, rate_for, run_strategy, score
+from scripts.advice_score import advice_terms, latest_advice, rate_for, run_strategy, score, score_by_start
 
 M = ["2022-04", "2022-05", "2022-06"]
 
@@ -100,3 +100,25 @@ def test_score_stops_when_a_needed_1y_rate_is_missing():
     records = [rec("2022-04-07", "float", []), rec("2022-05-05", "1y", [12])]
     with pytest.raises(ValueError, match="no 1y rate for 2022-05"):
         score(records, gap_b20(), 100_000)
+
+
+def three_months_b20():
+    rates = {"float": 6.0, "6m": 8.0, "1y": 12.0, "18m": 9.0, "2y": 10.0, "3y": 7.2}
+    ends = [date(2022, 4, 30), date(2022, 5, 31), date(2022, 6, 30)]
+    return {key: [(day, rate) for day in ends] for key, rate in rates.items()}
+
+
+def test_score_by_start_gives_totals_from_each_start_month_to_the_end():
+    rows = score_by_start([rec("2022-04-07", "float", [])], three_months_b20(), 100_000)
+    assert [(r["start"], r["months"]) for r in rows] == [("2022-04", 3), ("2022-05", 2), ("2022-06", 1)]
+    assert set(rows[0]["totals"]) == {"tony", "float", "6m", "1y", "18m", "2y", "3y"}
+    assert rows[0]["totals"]["float"] == 1500.0
+    assert rows[0]["totals"]["1y"] == 3000.0
+    assert rows[0]["totals"]["3y"] == 1800.0
+    assert rows[2]["totals"]["1y"] == 1000.0
+
+
+def test_score_by_start_uses_the_advice_in_force_at_the_start():
+    # The April issue says float; a June start must float too, not use the 1-year default.
+    rows = score_by_start([rec("2022-04-07", "float", [])], three_months_b20(), 100_000)
+    assert rows[2]["totals"]["tony"] == 500.0

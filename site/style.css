@@ -50,6 +50,21 @@ header h1 { margin: 0 0 4px; font-size: 22px; }
 .muted { color: var(--muted); }
 .tick { color: var(--good); font-weight: 700; margin-left: 6px; }
 #by-start-key .tick { margin: 0 4px 0 0; }
+.cross { color: var(--neg); font-weight: 700; }
+#by-start-summary, #by-start-best { font-size: 15px; font-weight: 600; margin: 6px 0 4px; }
+#by-start-best { font-weight: 400; }
+/* A row with too little data to judge: muted text. The label "too early" carries the meaning. */
+tr.early td, tr.early td .verdict-word { color: var(--muted); font-weight: 400; }
+.early-label { font-size: 11px; margin-left: 6px; }
+td.verdict { white-space: nowrap; }
+td.verdict .tick, td.verdict .cross { margin: 0 6px 0 0; display: inline-block; width: 1em; }
+.verdict-word { font-weight: 600; }
+/* The cheapest way in a row: a green wash and the word "best", so colour is not the only signal. */
+td.best, .best-key { background: color-mix(in srgb, var(--good) 18%, transparent); }
+td.best { font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--good) 55%, transparent); }
+td.best .muted { font-weight: 400; margin-left: 4px; }
+.best-key { padding: 0 5px; border-radius: 3px; color: var(--fg); margin-right: 2px; }
+#by-start td.num { white-space: nowrap; }
 footer { margin-top: 12px; font-size: 13px; }
 footer input { width: 120px; font: inherit; }
 a { color: var(--m1); }
